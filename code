@@ -1,0 +1,129 @@
+//Documentation: https://developers.google.com/tasks/reference/rest
+function logCompletedTask() {
+  var debugMode = false;
+  var taskLists = Tasks.Tasklists.list().items;
+  var targetListTitle = "FrequencyTrackerTaskList";
+  var sheetName = "Log";    //Name of sheet to store log inside G-sheet
+
+  var taskListId = "";
+
+  for (var i = 0; i < taskLists.length; i++) {
+    if (taskLists[i].title === targetListTitle) {
+      taskListId = taskLists[i].id;
+      break;
+    }
+  }
+
+  if (!taskListId) {
+    Logger.log("Tasklist not found");
+    return; // Exit if the tasklist is not found
+  }
+
+  var optionalArgs = {
+    maxResults: 50,
+    showHidden: true,
+    tasklist: taskListId // Using the dynamically found taskListId
+  };
+
+  var tasks = Tasks.Tasks.list(taskListId, optionalArgs).items; // Access tasks using .items
+  var sheetId = PropertiesService.getScriptProperties().getProperty('sheet_Id');
+  var sheet = SpreadsheetApp.openById(sheetId).getSheetByName(sheetName);
+
+  Logger.log(taskLists);
+  Logger.log(tasks);
+
+  for (var k = 0; k < tasks.length; k++) { // Change tasks.length to tasks.items.length
+    var task = tasks[k];
+
+    if (debugMode == true){ // Logger
+      Logger.log("task: ", task);
+      Logger.log("taskstatus: ", task.status);
+    }
+
+    if (task.status == "completed") {
+      var taskTitle = task.title;
+      var completedTime = new Date(task.completed); 
+      var dateString = Utilities.formatDate(completedTime, Session.getScriptTimeZone(), "yyyy-MM-dd");
+      var timeString = Utilities.formatDate(completedTime, Session.getScriptTimeZone(), "HH:mm:ss");
+
+      if (debugMode == true){ // Logger
+        Logger.log("taskTitle: ", taskTitle);
+        Logger.log("dateString: ", dateString);
+        Logger.log("timeString: ", timeString);
+      }
+
+      // Log task completion into Google Sheet
+      sheet.insertRowAfter(1);
+      var newRange = sheet.getRange(2, 1, 1, 3); // Get the range where you've set the values
+      newRange.setValues([[taskTitle, dateString, timeString]]);
+      newRange.clearFormat(); // Clear the formatting of the new range
+      Logger.log("Row added");
+
+      // Mark the task as incomplete again, if not in debug mode.
+      if (debugMode == false){
+        var taskId = task.id;
+        var resource = {
+          status: "needsAction", // This is either "needsAction" or "completed"
+          completed: null
+          // due: "2019-04-15T00:00:00Z", // Due date of the task (as a RFC 3339 timestamp).
+          // notes: "sample note",
+        }
+        Tasks.Tasks.patch(resource, taskListId, taskId);
+      }
+    }
+  }
+
+  // Order tasks alphabetically based on title:
+
+  // Create a dictionary to store task titles mapped to their IDs
+  var titleToId = {};
+  tasks.forEach(task => {
+    titleToId[task.title] = task.id;
+  });
+
+  var numOfTasks = tasks.length;
+
+  // Sort tasks by title
+  tasks = Tasks.Tasks.list(taskListId, optionalArgs).items; // Renew list of all tasks
+  var sortedTasks = tasks.sort((a, b) => a.title.localeCompare(b.title));
+
+  // Create a dictionary to store task titles mapped to their IDs
+  var titleToId = {};
+  tasks.forEach(task => {
+    titleToId[task.title] = task.id;
+  });
+
+  // Reorder tasks by specifying the 'previous' task ID
+  for (var i = 1; i < sortedTasks.length; i++) {
+    var taskTitle = sortedTasks[i].title;
+    var taskId = titleToId[taskTitle];
+
+    var previousTaskTitle = sortedTasks[i - 1].title;
+    var previousTaskId = titleToId[previousTaskTitle];
+
+    var resourcePrevious = {
+      previous: previousTaskId
+    };
+
+    Tasks.Tasks.move(taskListId, taskId, resourcePrevious);
+  }
+
+  /*
+  //Debugging
+  var taskTitle = "Task 3";
+  var taskId = titleToId[taskTitle];
+  var taskTitlePreviousTask = "Task 2";
+  var taskIdPreviousTask = titleToId[taskTitlePreviousTask];
+  
+  var resourcePrevious = {
+      previous: taskIdPreviousTask
+  };
+
+  Tasks.Tasks.move(taskListId, taskId,resourcePrevious);
+  */
+
+  tasks = Tasks.Tasks.list(taskListId, optionalArgs).items; // Renew tasks
+  Logger.log("Final output tasks: ");
+  Logger.log(tasks);
+
+}
